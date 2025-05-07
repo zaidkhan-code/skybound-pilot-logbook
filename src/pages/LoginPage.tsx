@@ -1,11 +1,11 @@
 
+import LoginForm from "@/components/auth/LoginForm";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import Landing from "@/components/landing/Landing";
 
-export default function Index() {
+export default function LoginPage() {
   return (
     <ThemeProvider>
-      <Landing />
+      <LoginForm />
     </ThemeProvider>
   );
 }
