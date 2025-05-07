@@ -35,7 +35,7 @@ const plans = [
     ],
     limitations: [],
     cta: "Get Premium",
-    ctaLink: "/signup?plan=premium",
+    ctaLink: "/checkout?plan=premium",
     popular: true,
   }
 ];

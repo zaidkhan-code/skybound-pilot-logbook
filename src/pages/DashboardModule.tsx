@@ -6,6 +6,7 @@ import ProfileModule from "@/components/dashboard/ProfileModule";
 import FlightsModule from "@/components/dashboard/FlightsModule";
 import LogFlightForm from "@/components/dashboard/LogFlightForm";
 import StatisticsModule from "@/components/dashboard/StatisticsModule";
+import FieldConfigModule from "@/components/dashboard/FieldConfigModule";
 
 export default function DashboardModule() {
   const { module } = useParams();
@@ -20,6 +21,8 @@ export default function DashboardModule() {
         return <LogFlightForm />;
       case "statistics":
         return <StatisticsModule />;
+      case "field-config":
+        return <FieldConfigModule />;
       default:
         return <DashboardHome />;
     }

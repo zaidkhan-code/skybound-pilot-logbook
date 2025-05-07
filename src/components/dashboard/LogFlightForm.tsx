@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Check } from "lucide-react";
 import Select from "react-select";
+import { Link } from "react-router-dom";
 
 // Example aircraft options with creatable feature
 const aircraftOptions = [
@@ -43,6 +44,22 @@ const pilotFunctionOptions = [
   { value: "EXAMINER", label: "Examiner" },
 ];
 
+// Default field configuration if none is found
+const defaultFieldsConfig = [
+  { id: "date", name: "Flight Date", required: true, enabled: true, section: "basic" },
+  { id: "aircraft", name: "Aircraft", required: true, enabled: true, section: "basic" },
+  { id: "takeoffTime", name: "Takeoff Time", required: true, enabled: true, section: "basic" },
+  { id: "landingTime", name: "Landing Time", required: true, enabled: true, section: "basic" },
+  { id: "departureAirport", name: "Departure Airport", required: true, enabled: true, section: "basic" },
+  { id: "destinationAirport", name: "Destination Airport", required: true, enabled: true, section: "basic" },
+  { id: "flightType", name: "Flight Type", required: true, enabled: true, section: "basic" },
+  { id: "pilotFunction", name: "Pilot Function", required: true, enabled: true, section: "basic" },
+  { id: "takeoffDay", name: "Day Takeoffs", required: false, enabled: true, section: "takeoffsLandings" },
+  { id: "takeoffNight", name: "Night Takeoffs", required: false, enabled: true, section: "takeoffsLandings" },
+  { id: "landingDay", name: "Day Landings", required: false, enabled: true, section: "takeoffsLandings" },
+  { id: "landingNight", name: "Night Landings", required: false, enabled: true, section: "takeoffsLandings" },
+];
+
 export default function LogFlightForm() {
   const { toast } = useToast();
   const [formState, setFormState] = useState({
@@ -58,28 +75,61 @@ export default function LogFlightForm() {
     landingNight: 0,
     flightType: null,
     pilotFunction: null,
+    instrumentTime: 0,
+    crossCountryTime: 0,
+    nightTime: 0,
+    remarks: "",
   });
   
   const [calculatedTime, setCalculatedTime] = useState({
     totalTime: "0.0",
   });
   
-  const customStyles = {
-    control: (base) => ({
+  const [fieldsConfig, setFieldsConfig] = useState(() => {
+    // Try to get saved configuration from localStorage
+    const savedConfig = localStorage.getItem("fieldsConfig");
+    return savedConfig ? JSON.parse(savedConfig) : defaultFieldsConfig;
+  });
+  
+  const [isPremium, setIsPremium] = useState(false);
+  
+  useEffect(() => {
+    // Check premium status from localStorage
+    const premium = localStorage.getItem("isPremium") === "true";
+    setIsPremium(premium);
+    
+    // Reload fields config when component mounts
+    const savedConfig = localStorage.getItem("fieldsConfig");
+    if (savedConfig) {
+      setFieldsConfig(JSON.parse(savedConfig));
+    }
+  }, []);
+  
+  // Get field configuration for a specific field
+  const getFieldConfig = (fieldId) => {
+    const config = fieldsConfig.find(field => field.id === fieldId);
+    return config || { required: false, enabled: true };
+  };
+  
+  // Enhanced React Select styles with light/dark mode support
+  const selectStyles = {
+    control: (base, state) => ({
       ...base,
-      minHeight: '36px',
       background: 'var(--background)',
-      borderColor: 'var(--border)',
-      boxShadow: 'none',
+      borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
+      borderRadius: 'var(--radius)',
+      boxShadow: state.isFocused ? `0 0 0 1px var(--ring)` : 'none',
       '&:hover': {
-        borderColor: 'var(--ring)',
-      }
+        borderColor: state.isFocused ? 'var(--ring)' : 'var(--border)',
+      },
+      padding: '1px',
     }),
     menu: (base) => ({
       ...base,
-      background: 'var(--background)',
+      background: 'var(--popover)',
       border: '1px solid var(--border)',
-      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+      borderRadius: 'var(--radius)',
+      boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
       zIndex: 9999,
     }),
     option: (base, { isFocused, isSelected }) => ({
@@ -92,6 +142,39 @@ export default function LogFlightForm() {
       color: isSelected
         ? 'var(--primary-foreground)'
         : 'var(--foreground)',
+      ':active': {
+        backgroundColor: !isSelected ? 'var(--accent)' : undefined,
+      },
+    }),
+    multiValue: (base) => ({
+      ...base,
+      backgroundColor: 'var(--accent)',
+      borderRadius: 'calc(var(--radius) - 2px)',
+    }),
+    multiValueLabel: (base) => ({
+      ...base,
+      color: 'var(--accent-foreground)',
+      fontSize: '0.875rem',
+    }),
+    multiValueRemove: (base) => ({
+      ...base,
+      color: 'var(--accent-foreground)',
+      ':hover': {
+        backgroundColor: 'var(--primary)',
+        color: 'var(--primary-foreground)',
+      },
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: 'var(--muted-foreground)',
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: 'var(--foreground)',
+    }),
+    input: (base) => ({
+      ...base,
+      color: 'var(--foreground)',
     }),
   };
   
@@ -132,6 +215,27 @@ export default function LogFlightForm() {
   const handleSubmit = (e) => {
     e.preventDefault();
     
+    // Check required fields based on field configuration
+    const missingRequiredFields = [];
+    
+    fieldsConfig.forEach(field => {
+      if (field.required && field.enabled) {
+        const value = formState[field.id];
+        if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
+          missingRequiredFields.push(field.name);
+        }
+      }
+    });
+    
+    if (missingRequiredFields.length > 0) {
+      toast({
+        title: "Missing required fields",
+        description: `Please fill in: ${missingRequiredFields.join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // In a real app, you would validate and submit the form data
     toast({
       title: "Flight logged successfully",
@@ -157,6 +261,10 @@ export default function LogFlightForm() {
       landingNight: 0,
       flightType: null,
       pilotFunction: null,
+      instrumentTime: 0,
+      crossCountryTime: 0,
+      nightTime: 0,
+      remarks: "",
     });
     
     setCalculatedTime({ totalTime: "0.0" });
@@ -164,11 +272,24 @@ export default function LogFlightForm() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Log a Flight</h1>
-        <p className="text-muted-foreground">
-          Add a new flight to your logbook
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Log a Flight</h1>
+          <p className="text-muted-foreground">
+            Add a new flight to your logbook
+          </p>
+        </div>
+        
+        {isPremium && (
+          <Button variant="outline" asChild size="sm" className="self-start">
+            <Link to="/dashboard/field-config">
+              <span className="flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                Configure Fields
+              </span>
+            </Link>
+          </Button>
+        )}
       </div>
       
       <Tabs defaultValue="basic">
@@ -189,159 +310,234 @@ export default function LogFlightForm() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="date">Flight Date</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={formState.date}
-                      onChange={(e) => handleInputChange('date', e.target.value)}
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("date").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="date">
+                        Flight Date
+                        {getFieldConfig("date").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="date"
+                        type="date"
+                        value={formState.date}
+                        onChange={(e) => handleInputChange('date', e.target.value)}
+                        required={getFieldConfig("date").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="aircraft">Aircraft</Label>
-                    <Select
-                      id="aircraft"
-                      options={aircraftOptions}
-                      value={formState.aircraft}
-                      onChange={(value) => handleInputChange('aircraft', value)}
-                      styles={customStyles}
-                      isClearable
-                      isSearchable
-                      placeholder="Select or enter aircraft..."
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("aircraft").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="aircraft">
+                        Aircraft
+                        {getFieldConfig("aircraft").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        id="aircraft"
+                        options={aircraftOptions}
+                        value={formState.aircraft}
+                        onChange={(value) => handleInputChange('aircraft', value)}
+                        styles={selectStyles}
+                        isClearable
+                        isSearchable
+                        placeholder="Select or enter aircraft..."
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                        required={getFieldConfig("aircraft").required}
+                        isCreatable={true}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="takeoff-time">Takeoff Time</Label>
-                    <Input
-                      id="takeoff-time"
-                      type="time"
-                      value={formState.takeoffTime}
-                      onChange={(e) => handleInputChange('takeoffTime', e.target.value)}
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("takeoffTime").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="takeoff-time">
+                        Takeoff Time
+                        {getFieldConfig("takeoffTime").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="takeoff-time"
+                        type="time"
+                        value={formState.takeoffTime}
+                        onChange={(e) => handleInputChange('takeoffTime', e.target.value)}
+                        required={getFieldConfig("takeoffTime").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="landing-time">Landing Time</Label>
-                    <Input
-                      id="landing-time"
-                      type="time"
-                      value={formState.landingTime}
-                      onChange={(e) => handleInputChange('landingTime', e.target.value)}
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("landingTime").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="landing-time">
+                        Landing Time
+                        {getFieldConfig("landingTime").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="landing-time"
+                        type="time"
+                        value={formState.landingTime}
+                        onChange={(e) => handleInputChange('landingTime', e.target.value)}
+                        required={getFieldConfig("landingTime").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="departure-airport">Departure Airport</Label>
-                    <Select
-                      id="departure-airport"
-                      options={airportOptions}
-                      value={formState.departureAirport}
-                      onChange={(value) => handleInputChange('departureAirport', value)}
-                      styles={customStyles}
-                      isClearable
-                      isSearchable
-                      placeholder="Select or enter airport..."
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("departureAirport").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="departure-airport">
+                        Departure Airport
+                        {getFieldConfig("departureAirport").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        id="departure-airport"
+                        options={airportOptions}
+                        value={formState.departureAirport}
+                        onChange={(value) => handleInputChange('departureAirport', value)}
+                        styles={selectStyles}
+                        isClearable
+                        isSearchable
+                        placeholder="Select or enter airport..."
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                        required={getFieldConfig("departureAirport").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="destination-airport">Destination Airport</Label>
-                    <Select
-                      id="destination-airport"
-                      options={airportOptions}
-                      value={formState.destinationAirport}
-                      onChange={(value) => handleInputChange('destinationAirport', value)}
-                      styles={customStyles}
-                      isClearable
-                      isSearchable
-                      placeholder="Select or enter airport..."
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("destinationAirport").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="destination-airport">
+                        Destination Airport
+                        {getFieldConfig("destinationAirport").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        id="destination-airport"
+                        options={airportOptions}
+                        value={formState.destinationAirport}
+                        onChange={(value) => handleInputChange('destinationAirport', value)}
+                        styles={selectStyles}
+                        isClearable
+                        isSearchable
+                        placeholder="Select or enter airport..."
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                        required={getFieldConfig("destinationAirport").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="flight-type">Flight Type</Label>
-                    <Select
-                      id="flight-type"
-                      options={flightTypeOptions}
-                      value={formState.flightType}
-                      onChange={(value) => handleInputChange('flightType', value)}
-                      styles={customStyles}
-                      isClearable
-                      isSearchable
-                      placeholder="Select flight type..."
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("flightType").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="flight-type">
+                        Flight Type
+                        {getFieldConfig("flightType").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        id="flight-type"
+                        options={flightTypeOptions}
+                        value={formState.flightType}
+                        onChange={(value) => handleInputChange('flightType', value)}
+                        styles={selectStyles}
+                        isClearable
+                        isSearchable
+                        placeholder="Select flight type..."
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                        required={getFieldConfig("flightType").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="pilot-function">Pilot Function</Label>
-                    <Select
-                      id="pilot-function"
-                      options={pilotFunctionOptions}
-                      value={formState.pilotFunction}
-                      onChange={(value) => handleInputChange('pilotFunction', value)}
-                      styles={customStyles}
-                      isClearable
-                      isSearchable
-                      placeholder="Select pilot function..."
-                      required
-                    />
-                  </div>
+                  {getFieldConfig("pilotFunction").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="pilot-function">
+                        Pilot Function
+                        {getFieldConfig("pilotFunction").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        id="pilot-function"
+                        options={pilotFunctionOptions}
+                        value={formState.pilotFunction}
+                        onChange={(value) => handleInputChange('pilotFunction', value)}
+                        styles={selectStyles}
+                        isClearable
+                        isSearchable
+                        placeholder="Select pilot function..."
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                        required={getFieldConfig("pilotFunction").required}
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="takeoffs-day">Day Takeoffs</Label>
-                    <Input
-                      id="takeoffs-day"
-                      type="number"
-                      min="0"
-                      value={formState.takeoffDay}
-                      onChange={(e) => handleInputChange('takeoffDay', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
+                  {getFieldConfig("takeoffDay").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="takeoffs-day">
+                        Day Takeoffs
+                        {getFieldConfig("takeoffDay").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="takeoffs-day"
+                        type="number"
+                        min="0"
+                        value={formState.takeoffDay}
+                        onChange={(e) => handleInputChange('takeoffDay', parseInt(e.target.value) || 0)}
+                        required={getFieldConfig("takeoffDay").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="takeoffs-night">Night Takeoffs</Label>
-                    <Input
-                      id="takeoffs-night"
-                      type="number"
-                      min="0"
-                      value={formState.takeoffNight}
-                      onChange={(e) => handleInputChange('takeoffNight', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
+                  {getFieldConfig("takeoffNight").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="takeoffs-night">
+                        Night Takeoffs
+                        {getFieldConfig("takeoffNight").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="takeoffs-night"
+                        type="number"
+                        min="0"
+                        value={formState.takeoffNight}
+                        onChange={(e) => handleInputChange('takeoffNight', parseInt(e.target.value) || 0)}
+                        required={getFieldConfig("takeoffNight").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="landings-day">Day Landings</Label>
-                    <Input
-                      id="landings-day"
-                      type="number"
-                      min="0"
-                      value={formState.landingDay}
-                      onChange={(e) => handleInputChange('landingDay', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
+                  {getFieldConfig("landingDay").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="landings-day">
+                        Day Landings
+                        {getFieldConfig("landingDay").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="landings-day"
+                        type="number"
+                        min="0"
+                        value={formState.landingDay}
+                        onChange={(e) => handleInputChange('landingDay', parseInt(e.target.value) || 0)}
+                        required={getFieldConfig("landingDay").required}
+                      />
+                    </div>
+                  )}
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="landings-night">Night Landings</Label>
-                    <Input
-                      id="landings-night"
-                      type="number"
-                      min="0"
-                      value={formState.landingNight}
-                      onChange={(e) => handleInputChange('landingNight', parseInt(e.target.value) || 0)}
-                    />
-                  </div>
+                  {getFieldConfig("landingNight").enabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="landings-night">
+                        Night Landings
+                        {getFieldConfig("landingNight").required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        id="landings-night"
+                        type="number"
+                        min="0"
+                        value={formState.landingNight}
+                        onChange={(e) => handleInputChange('landingNight', parseInt(e.target.value) || 0)}
+                        required={getFieldConfig("landingNight").required}
+                      />
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -389,10 +585,69 @@ export default function LogFlightForm() {
                   Enter additional details about your flight
                 </CardDescription>
               </CardHeader>
-              <CardContent className="text-center py-8">
-                <p>Advanced flight logging features available in the Premium plan.</p>
-                <Button variant="outline" className="mt-4">Upgrade to Premium</Button>
+              <CardContent className={`${!isPremium ? "text-center py-8" : "space-y-6"}`}>
+                {!isPremium ? (
+                  <>
+                    <p>Advanced flight logging features available in the Premium plan.</p>
+                    <Button variant="outline" className="mt-4" asChild>
+                      <Link to="/checkout?plan=premium">Upgrade to Premium</Link>
+                    </Button>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="instrument-time">Instrument Time</Label>
+                      <Input
+                        id="instrument-time"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={formState.instrumentTime}
+                        onChange={(e) => handleInputChange('instrumentTime', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="cross-country-time">Cross Country Time</Label>
+                      <Input
+                        id="cross-country-time"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={formState.crossCountryTime}
+                        onChange={(e) => handleInputChange('crossCountryTime', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="night-time">Night Time</Label>
+                      <Input
+                        id="night-time"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={formState.nightTime}
+                        onChange={(e) => handleInputChange('nightTime', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="remarks">Remarks</Label>
+                      <textarea
+                        id="remarks"
+                        className="w-full min-h-[100px] p-2 border rounded-md bg-background text-foreground resize-y"
+                        value={formState.remarks}
+                        onChange={(e) => handleInputChange('remarks', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
+              {isPremium && (
+                <CardFooter>
+                  <Button type="submit" className="w-full md:w-auto">Log Flight</Button>
+                </CardFooter>
+              )}
             </Card>
           </TabsContent>
           
@@ -405,8 +660,21 @@ export default function LogFlightForm() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="text-center py-8">
-                <p>Custom field configuration available in the Premium plan.</p>
-                <Button variant="outline" className="mt-4">Upgrade to Premium</Button>
+                {!isPremium ? (
+                  <>
+                    <p>Custom field configuration available in the Premium plan.</p>
+                    <Button variant="outline" className="mt-4" asChild>
+                      <Link to="/checkout?plan=premium">Upgrade to Premium</Link>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>Configure your custom fields to tailor your logbook to your specific needs.</p>
+                    <Button className="mt-4" asChild>
+                      <Link to="/dashboard/field-config">Configure Fields</Link>
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
